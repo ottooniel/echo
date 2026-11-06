@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+  <link rel="icon" href="data:,">
+  <title>ECHO</title>
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: #000;
+      overflow: hidden;
+      touch-action: none;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+  </style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+(function () {
+  const ARENA = 400;
+  const DT = 1 / 60;
+  const MAX_ACCUM = 0.1;
+  const MAX_SPEED = 220;
+  const PLAYER_R = 7;
+  const ORB_R = 9;
+  const ARENA_PAD = 18;
+  const JOYSTICK_R = 72;
+  const MARGIN = 28;
+
+  const canvas = document.getElementById("c");
+  const ctx = canvas.getContext("2d");
+
+  let viewW = 0;
+  let viewH = 0;
+  let dpr = 1;
+  let scale = 1;
+  let ox = 0;
+  let oy = 0;
+
+  const keys = Object.create(null);
+  let mouseWorldX = ARENA / 2;
+  let mouseWorldY = ARENA / 2;
+  let mouseSeen = false;
+
+  let stickId = null;
+  let stickOriginX = 0;
+  let stickOriginY = 0;
+  let stickNowX = 0;
+  let stickNowY = 0;
+
+  const player = {
+    x: ARENA / 2,
+    y: ARENA / 2,
+    px: ARENA / 2,
+    py: ARENA / 2
+  };
+
+  let round = 1;
+  let orbs = [];
+  let orbsThisRound = 0;
+  let orbsTotal = 0;
+  let roundsCompleted = 0;
+
+  let lastTime = 0;
+  let accum = 0;
+
+  function resize() {
+    viewW = window.innerWidth;
+    viewH = window.innerHeight;
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.floor(viewW * dpr);
+    canvas.height = Math.floor(viewH * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const usable = Math.min(viewW, viewH) - ARENA_PAD * 2;
+    scale = usable / ARENA;
+    ox = (viewW - ARENA * scale) / 2;
+    oy = (viewH - ARENA * scale) / 2;
+  }
+
+  function screenToWorld(sx, sy) {
+    return {
+      x: (sx - ox) / scale,
+      y: (sy - oy) / scale
+    };
+  }
+
+  function worldToScreen(x, y) {
+    return {
+      x: ox + x * scale,
+      y: oy + y * scale
+    };
+  }
+
+  function orbCountForRound(n) {
+    return 3 + (n >> 1);
+  }
+
+  function spawnOrbs() {
+    orbs = [];
+    const need = orbCountForRound(round);
+    if (round === 1) {
+      const cx = ARENA / 2;
+      const cy = ARENA / 2;
+      const radius = 96;
+      for (let i = 0; i < need; i++) {
+        const a = -Math.PI / 2 + i * (Math.PI * 2 / 3);
+        orbs.push({
+          x: cx + Math.cos(a) * radius,
+          y: cy + Math.sin(a) * radius
+        });
+      }
+      return;
+    }
+    const inner = MARGIN;
+    const span = ARENA - inner * 2;
+    for (let i = 0; i < need; i++) {
+      orbs.push({
+        x: inner + Math.random() * span,
+        y: inner + Math.random() * span
+      });
+    }
+  }
+
+  function collectOrbs() {
+    const reach = PLAYER_R + ORB_R;
+    for (let i = orbs.length - 1; i >= 0; i--) {
+      const o = orbs[i];
+      const dx = o.x - player.x;
+      const dy = o.y - player.y;
+      if (dx * dx + dy * dy <= reach * reach) {
+        orbs.splice(i, 1);
+        orbsThisRound += 1;
+        orbsTotal += 1;
+      }
+    }
+    if (orbs.length === 0) {
+      roundsCompleted += 1;
+      round += 1;
+      orbsThisRound = 0;
+      spawnOrbs();
+    }
+  }
+
+  function keyboardDir() {
+    const x = (keys.ArrowRight || keys.d || keys.D ? 1 : 0) -
+      (keys.ArrowLeft || keys.a || keys.A ? 1 : 0);
+    const y = (keys.ArrowDown || keys.s || keys.S ? 1 : 0) -
+      (keys.ArrowUp || keys.w || keys.W ? 1 : 0);
+    return { x, y };
+  }
+
+  function moveToward(tx, ty, dt) {
+    const dx = tx - player.x;
+    const dy = ty - player.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 0.4) {
+      return;
+    }
+    const step = Math.min(MAX_SPEED * dt, dist);
+    player.x += (dx / dist) * step;
+    player.y += (dy / dist) * step;
+  }
+
+  function moveVelocity(vx, vy, dt) {
+    player.x += vx * dt;
+    player.y += vy * dt;
+  }
+
+  function stickVelocity() {
+    const dx = stickNowX - stickOriginX;
+    const dy = stickNowY - stickOriginY;
+    const len = Math.hypot(dx, dy);
+    if (len < 8) {
+      return { x: 0, y: 0 };
+    }
+    const mag = Math.min(1, len / JOYSTICK_R);
+    return {
+      x: (dx / len) * MAX_SPEED * mag,
+      y: (dy / len) * MAX_SPEED * mag
+    };
+  }
+
+  function step(dt) {
+    player.px = player.x;
+    player.py = player.y;
+
+    const dir = keyboardDir();
+    if (dir.x || dir.y) {
+      const len = Math.hypot(dir.x, dir.y) || 1;
+      moveVelocity((dir.x / len) * MAX_SPEED, (dir.y / len) * MAX_SPEED, dt);
+    } else if (stickId !== null) {
+      const v = stickVelocity();
+      moveVelocity(v.x, v.y, dt);
+    } else if (mouseSeen) {
+      const tx = Math.max(PLAYER_R, Math.min(ARENA - PLAYER_R, mouseWorldX));
+      const ty = Math.max(PLAYER_R, Math.min(ARENA - PLAYER_R, mouseWorldY));
+      moveToward(tx, ty, dt);
+    }
+
+    collectOrbs();
+  }
+
+  function drawArena() {
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, viewW, viewH);
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(ox, oy, ARENA * scale, ARENA * scale);
+  }
+
+  function drawOrbs() {
+    ctx.fillStyle = "#ffd24a";
+    for (let i = 0; i < orbs.length; i++) {
+      const s = worldToScreen(orbs[i].x, orbs[i].y);
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, ORB_R * scale, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawPlayer(alpha) {
+    const x = player.px + (player.x - player.px) * alpha;
+    const y = player.py + (player.y - player.py) * alpha;
+    const s = worldToScreen(x, y);
+    ctx.save();
+    ctx.shadowColor = "#fff";
+    ctx.shadowBlur = 16;
+    ctx.fillStyle = "#fff";
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, PLAYER_R * scale, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawStick() {
+    if (stickId === null) {
+      return;
+    }
+    ctx.save();
+    ctx.strokeStyle = "rgba(255,255,255,0.28)";
+    ctx.fillStyle = "rgba(255,255,255,0.18)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(stickOriginX, stickOriginY, JOYSTICK_R, 0, Math.PI * 2);
+    ctx.stroke();
+    const dx = stickNowX - stickOriginX;
+    const dy = stickNowY - stickOriginY;
+    const len = Math.hypot(dx, dy);
+    const cap = Math.min(len, JOYSTICK_R);
+    const kx = stickOriginX + (len > 0 ? dx / len * cap : 0);
+    const ky = stickOriginY + (len > 0 ? dy / len * cap : 0);
+    ctx.beginPath();
+    ctx.arc(kx, ky, 16, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawHud() {
+    const need = orbCountForRound(round);
+    ctx.fillStyle = "#fff";
+    ctx.font = "16px monospace";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText("ECHO  R" + round + "  " + orbsThisRound + "/" + need, ox, Math.max(8, oy - 24));
+  }
+
+  function draw(alpha) {
+    drawArena();
+    drawOrbs();
+    drawPlayer(alpha);
+    drawStick();
+    drawHud();
+  }
+
+  function onPointerDown(e) {
+    e.preventDefault();
+    if (e.pointerType === "touch") {
+      if (stickId !== null) {
+        return;
+      }
+      stickId = e.pointerId;
+      stickOriginX = e.clientX;
+      stickOriginY = e.clientY;
+      stickNowX = e.clientX;
+      stickNowY = e.clientY;
+      return;
+    }
+    mouseSeen = true;
+    const w = screenToWorld(e.clientX, e.clientY);
+    mouseWorldX = w.x;
+    mouseWorldY = w.y;
+  }
+
+  function onPointerMove(e) {
+    e.preventDefault();
+    if (e.pointerType === "touch") {
+      if (e.pointerId !== stickId) {
+        return;
+      }
+      stickNowX = e.clientX;
+      stickNowY = e.clientY;
+      return;
+    }
+    mouseSeen = true;
+    const w = screenToWorld(e.clientX, e.clientY);
+    mouseWorldX = w.x;
+    mouseWorldY = w.y;
+  }
+
+  function onPointerUp(e) {
+    if (e.pointerId === stickId) {
+      stickId = null;
+    }
+  }
+
+  function onKey(e, down) {
+    keys[e.key] = down;
+    if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].indexOf(e.key) !== -1) {
+      e.preventDefault();
+    }
+  }
+
+  function frame(now) {
+    if (!lastTime) {
+      lastTime = now;
+    }
+    let dt = (now - lastTime) / 1000;
+    lastTime = now;
+    accum += dt;
+    if (accum > MAX_ACCUM) {
+      accum = MAX_ACCUM;
+    }
+    while (accum >= DT) {
+      step(DT);
+      accum -= DT;
+    }
+    draw(accum / DT);
+    requestAnimationFrame(frame);
+  }
+
+  window.addEventListener("resize", resize);
+  window.addEventListener("pointerdown", onPointerDown, { passive: false });
+  window.addEventListener("pointermove", onPointerMove, { passive: false });
+  window.addEventListener("pointerup", onPointerUp);
+  window.addEventListener("pointercancel", onPointerUp);
+  window.addEventListener("keydown", function (e) { onKey(e, true); });
+  window.addEventListener("keyup", function (e) { onKey(e, false); });
+
+  resize();
+  spawnOrbs();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

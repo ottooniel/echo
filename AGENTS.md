@@ -58,14 +58,12 @@ El resultado son bytes. Debe ser menor que 32768. Si pasa de 30000, avisar y rec
 
 ## Concepto del juego
 
-> POR DEFINIR. Completar antes de empezar a programar.
-
-- **Nombre:**
-- **Idea en una línea:**
-- **Controles:**
-- **Qué lo hace difícil:**
-- **Qué lo hace "cool" (identidad visual y sonora):**
-- **Condición de derrota / puntaje:**
+- **Nombre:** ECHO
+- **Idea en una línea:** Arcade de supervivencia en una arena: cada ronda graba tu recorrido y lo convierte en un eco que repite ese camino en las rondas siguientes.
+- **Controles:** En ratón, el punto sigue al puntero con velocidad máxima limitada. En táctil, un joystick flotante: el arrastre desde el contacto inicial define el movimiento para que el dedo no tape el punto. Alternativa de teclado: flechas o WASD. Arena lógica fija, igual en celular y escritorio.
+- **Qué lo hace difícil:** No hay enemigos extra. Solo se acumulan ecos (un path por ronda completada) y orbes (`3 + floor(ronda/2)`). La ronda 1 no tiene ecos y enseña sola; desde la 3 se siente tensa; alrededor de la 8, casi imposible.
+- **Qué lo hace "cool" (identidad visual y sonora):** Paleta negro / blanco / cuatro neones (un color por eco, opacidad por antigüedad pero nunca bajo 0.5) / amarillo en orbes. Estela, bloom (`shadowBlur`), orbes que pulsan, partículas, screen shake al morir, flash al completar ronda. Sonido sintético: blip ascendente al recoger, arpegio al completar ronda, ráfaga de ruido al morir; drones graves por eco si caben en el presupuesto. Texto solo `monospace` del sistema, dibujado en canvas.
+- **Condición de derrota / puntaje:** Tocar un eco (después de 1.5 s de gracia) o salir de la arena. Puntaje: rondas completadas, orbes como desempate. Mejor marca en `localStorage` dentro de `try/catch`.
 
 ## Cómo debe trabajar el agente
 
