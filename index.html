@@ -20,7 +20,7 @@
   const MAX_SPEED = 220;
   const PLAYER_R = 7;
   const ORB_R = 9;
-  const ARENA_PAD = 18;
+  const ARENA_PAD = 34;
   const JOYSTICK_R = 72;
   const MARGIN = 28;
   const ECHO_R = 7;
@@ -67,7 +67,7 @@
   let deadTicks = 0;
   let started = false;
   let newBest = false;
-  let best = { r: 0, o: 0 }, copiedUntil = 0;
+  let best = { r: 0, o: 0 }, copiedUntil = 0, shareArmed = false;
 
   let lastTime = 0;
   let accum = 0;
@@ -657,7 +657,7 @@
     const cx = ARENA / 2, cy = ARENA / 2;
     for (let i = 0; i < 3; i++) {
       const a = now * 0.0007 + i * 2.1;
-      const s = worldToScreen(cx + Math.cos(a) * 72, cy + Math.sin(a) * 52);
+      const s = worldToScreen(cx + Math.cos(a) * 135, cy + Math.sin(a) * 120);
       ctx.globalAlpha = 0.55;
       ctx.fillStyle = NEON[i];
       ctx.beginPath();
@@ -704,6 +704,10 @@
       ctx.font = "12px monospace";
       ctx.fillText(performance.now() < copiedUntil ? "copiado" : "compartir", viewW / 2, viewH / 2 + (newBest ? 96 : 76));
     }
+  }
+
+  function hitShare(x, y) {
+    return Math.abs(x - viewW / 2) < 90 && Math.abs(y - (viewH / 2 + (newBest ? 96 : 76))) < 24;
   }
 
   function shareScore() {
@@ -777,7 +781,7 @@
       return;
     }
     if (dead) {
-      if (Math.abs(e.clientX - viewW / 2) < 64 && Math.abs(e.clientY - (viewH / 2 + (newBest ? 96 : 76))) < 14) { shareScore(); return; }
+      if (hitShare(e.clientX, e.clientY)) { shareArmed = true; return; }
       if (deadTicks < RESTART_TICKS) return;
       resetRun();
       applyPointerControl(e);
@@ -806,6 +810,10 @@
 
   function onPointerUp(e) {
     unlock();
+    if (shareArmed) {
+      if (e.type !== "pointercancel" && dead && hitShare(e.clientX, e.clientY)) shareScore();
+      shareArmed = false;
+    }
     if (e.pointerId === stickId) {
       stickId = null;
     }
