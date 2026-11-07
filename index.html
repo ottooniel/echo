@@ -67,7 +67,7 @@
   let deadTicks = 0;
   let started = false;
   let newBest = false;
-  let best = { r: 0, o: 0 };
+  let best = { r: 0, o: 0 }, copiedUntil = 0;
 
   let lastTime = 0;
   let accum = 0;
@@ -701,7 +701,17 @@
       ctx.font = "14px monospace";
       ctx.fillText("MEJOR  R" + best.r + "  " + best.o, viewW / 2, viewH / 2 + (newBest ? 54 : 34));
       ctx.fillText("toca para reiniciar", viewW / 2, viewH / 2 + (newBest ? 76 : 56));
+      ctx.font = "12px monospace";
+      ctx.fillText(performance.now() < copiedUntil ? "copiado" : "compartir", viewW / 2, viewH / 2 + (newBest ? 96 : 76));
     }
+  }
+
+  function shareScore() {
+    const t = "ECHO · R" + roundsCompleted + " · " + orbsTotal + " orbes. ¿Me superas? " + location.href;
+    try {
+      navigator.share ? navigator.share({ text: t }).catch(function () {}) :
+        navigator.clipboard.writeText(t).then(function () { copiedUntil = performance.now() + 1500; }).catch(function () {});
+    } catch (err) {}
   }
 
   function draw(alpha, now) {
@@ -767,6 +777,7 @@
       return;
     }
     if (dead) {
+      if (Math.abs(e.clientX - viewW / 2) < 64 && Math.abs(e.clientY - (viewH / 2 + (newBest ? 96 : 76))) < 14) { shareScore(); return; }
       if (deadTicks < RESTART_TICKS) return;
       resetRun();
       applyPointerControl(e);
@@ -807,6 +818,7 @@
 
   function onKey(e, down) {
     if (down) unlock();
+    if (down && !e.repeat && dead && (e.key === "c" || e.key === "C")) { shareScore(); return; }
     if (down && (e.key === "m" || e.key === "M")) {
       if (!e.repeat && master) {
         muted = !muted;
