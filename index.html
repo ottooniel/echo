@@ -20,8 +20,7 @@
   const MAX_SPEED = 220;
   const PLAYER_R = 7;
   const ORB_R = 9;
-  const ARENA_PAD = 34;
-  const JOYSTICK_R = 72;
+  const JOYSTICK_R = 48;
   const MARGIN = 28;
   const ECHO_R = 7;
   const GRACE_TICKS = 90;
@@ -87,8 +86,7 @@
     canvas.width = Math.floor(viewW * dpr);
     canvas.height = Math.floor(viewH * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const usable = Math.min(viewW, viewH) - ARENA_PAD * 2;
-    scale = usable / ARENA;
+    scale = Math.min((viewW - 36) / ARENA, (viewH - 68) / ARENA);
     ox = (viewW - ARENA * scale) / 2;
     oy = (viewH - ARENA * scale) / 2;
   }
@@ -290,7 +288,7 @@
     const dx = stickNowX - stickOriginX;
     const dy = stickNowY - stickOriginY;
     const len = Math.hypot(dx, dy);
-    if (len < 8) {
+    if (len < 6) {
       return { x: 0, y: 0 };
     }
     const mag = Math.min(1, len / JOYSTICK_R);
@@ -635,9 +633,9 @@
       return;
     }
     ctx.save();
-    ctx.strokeStyle = "rgba(255,255,255,0.28)";
-    ctx.fillStyle = "rgba(255,255,255,0.18)";
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = "rgba(255,255,255,0.14)";
+    ctx.fillStyle = "rgba(255,255,255,0.38)";
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.arc(stickOriginX, stickOriginY, JOYSTICK_R, 0, Math.PI * 2);
     ctx.stroke();
@@ -648,7 +646,7 @@
     const kx = stickOriginX + (len > 0 ? dx / len * cap : 0);
     const ky = stickOriginY + (len > 0 ? dy / len * cap : 0);
     ctx.beginPath();
-    ctx.arc(kx, ky, 16, 0, Math.PI * 2);
+    ctx.arc(kx, ky, 12, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
