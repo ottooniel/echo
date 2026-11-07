@@ -6,19 +6,8 @@
   <link rel="icon" href="data:,">
   <title>ECHO</title>
   <style>
-    html, body {
-      margin: 0;
-      height: 100%;
-      background: #000;
-      overflow: hidden;
-      touch-action: none;
-    }
-    canvas {
-      display: block;
-      width: 100%;
-      height: 100%;
-      touch-action: none;
-    }
+    html, body { margin: 0; height: 100%; background: #000; overflow: hidden; touch-action: none; }
+    canvas { display: block; width: 100%; height: 100%; touch-action: none; }
   </style>
 </head>
 <body>
@@ -79,6 +68,11 @@
 
   let lastTime = 0;
   let accum = 0;
+
+  const trail = [];
+  const parts = [];
+  let visOrbs = 0, visRound = 1, visDead = false, visPathLen = 0;
+  let shakeUntil = 0, flashUntil = 0, graceFlashUntil = 0, fxPrev = 0;
 
   function resize() {
     viewW = window.innerWidth;
@@ -313,76 +307,193 @@
     collectOrbs();
   }
 
-  function drawArena() {
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, viewW, viewH);
-    ctx.strokeStyle = "#fff";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(ox, oy, ARENA * scale, ARENA * scale);
+  function burst(x, y, n, color, spd, now) {
+    for (let i = 0; i < n && parts.length < 120; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const s = spd * (0.35 + Math.random());
+      parts.push({
+        x: x, y: y, vx: Math.cos(a) * s, vy: Math.sin(a) * s,
+        born: now, life: 260 + Math.random() * 200, color: color, r: 1.6 + Math.random() * 2.2
+      });
+    }
   }
 
-  function echoOpacity(index) {
-    const age = echoes.length - 1 - index;
-    const a = 1 - age * 0.12;
-    const floor = 0.5;
+  function echoHitColor() {
+    const i = currentPath.length - 1;
+    const r2 = (PLAYER_R + ECHO_R) * (PLAYER_R + ECHO_R);
+    for (let e = 0; e < echoes.length; e++) {
+      const path = echoes[e].path;
+      if (i >= path.length) continue;
+      const dx = path[i].x - player.x;
+      const dy = path[i].y - player.y;
+      if (dx * dx + dy * dy <= r2) return NEON[echoes[e].color];
+    }
+    return "#fff";
+  }
+
+  function syncFx(now) {
+    if (orbsTotal > visOrbs) {
+      let bx = player.x, by = player.y;
+      if (round !== visRound && echoes.length) {
+        const last = echoes[echoes.length - 1].path;
+        const p = last[last.length - 1];
+        bx = p.x;
+        by = p.y;
+      }
+      for (let i = 0; i < orbsTotal - visOrbs; i++) burst(bx, by, 10, "#ffd24a", 90, now);
+    }
+    if (round !== visRound) {
+      trail.length = 0;
+      if (round > visRound) flashUntil = now + 120;
+    }
+    if (dead && !visDead) {
+      burst(player.x, player.y, 16, "#fff", 140, now);
+      burst(player.x, player.y, 10, echoHitColor(), 120, now);
+      shakeUntil = now + 200;
+    }
+    if (!dead && visDead) {
+      parts.length = trail.length = 0;
+      shakeUntil = flashUntil = graceFlashUntil = 0;
+    }
+    if (visPathLen < GRACE_TICKS && currentPath.length >= GRACE_TICKS && echoes.length) {
+      graceFlashUntil = now + 180;
+    }
+    visOrbs = orbsTotal; visRound = round; visDead = dead; visPathLen = currentPath.length;
+  }
+
+  function echoOpacity(index, now) {
+    const a = 1 - (echoes.length - 1 - index) * 0.12;
     const inGrace = currentPath.length < GRACE_TICKS;
-    return Math.max(floor, inGrace ? Math.min(a, 0.55) : a);
+    let o = Math.max(0.5, inGrace ? Math.min(a, 0.55) : a);
+    if (inGrace) o = Math.max(0.5, o * (0.78 + 0.22 * (0.5 + 0.5 * Math.sin(now * 0.012))));
+    if (now < graceFlashUntil) o = Math.min(1, o + 0.45);
+    return o;
   }
 
   function echoPos(path, alpha) {
     const i = currentPath.length - 1;
-    if (i < 0 || i >= path.length) {
-      return null;
-    }
+    if (i < 0 || i >= path.length) return null;
     const a = path[i];
-    if (i === 0) {
-      return a;
-    }
+    if (!i) return a;
     const b = path[i - 1];
-    return {
-      x: b.x + (a.x - b.x) * alpha,
-      y: b.y + (a.y - b.y) * alpha
-    };
+    return { x: b.x + (a.x - b.x) * alpha, y: b.y + (a.y - b.y) * alpha };
   }
 
-  function drawEchoes(alpha) {
+  function drawEchoRoutes() {
+    const i0 = currentPath.length - 1;
+    if (i0 < 0) return;
+    ctx.lineWidth = 1.4; ctx.globalAlpha = 0.12;
+    for (let e = 0; e < echoes.length; e++) {
+      const path = echoes[e].path;
+      if (i0 >= path.length) continue;
+      ctx.strokeStyle = NEON[echoes[e].color];
+      ctx.beginPath();
+      let s = worldToScreen(path[i0].x, path[i0].y);
+      ctx.moveTo(s.x, s.y);
+      for (let i = i0 + 3; i < path.length; i += 3) {
+        s = worldToScreen(path[i].x, path[i].y);
+        ctx.lineTo(s.x, s.y);
+      }
+      s = worldToScreen(path[path.length - 1].x, path[path.length - 1].y);
+      ctx.lineTo(s.x, s.y);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawEchoes(alpha, now) {
+    ctx.shadowBlur = echoes.length > 6 ? 4 : 12;
     for (let e = 0; e < echoes.length; e++) {
       const pos = echoPos(echoes[e].path, alpha);
-      if (!pos) {
-        continue;
-      }
+      if (!pos) continue;
       const s = worldToScreen(pos.x, pos.y);
-      ctx.globalAlpha = echoOpacity(e);
-      ctx.fillStyle = NEON[echoes[e].color];
+      const col = NEON[echoes[e].color];
+      ctx.globalAlpha = echoOpacity(e, now);
+      ctx.shadowColor = col;
+      ctx.fillStyle = col;
       ctx.beginPath();
       ctx.arc(s.x, s.y, ECHO_R * scale, 0, Math.PI * 2);
       ctx.fill();
-      ctx.globalAlpha = 1;
     }
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
   }
 
-  function drawOrbs() {
+  function drawOrbs(now) {
+    const pulse = 0.5 + 0.5 * Math.sin(now * 0.006);
     ctx.fillStyle = "#ffd24a";
+    ctx.shadowColor = "#ffd24a";
+    ctx.shadowBlur = 6 + pulse * 6;
     for (let i = 0; i < orbs.length; i++) {
       const s = worldToScreen(orbs[i].x, orbs[i].y);
       ctx.beginPath();
-      ctx.arc(s.x, s.y, ORB_R * scale, 0, Math.PI * 2);
+      ctx.arc(s.x, s.y, (ORB_R + pulse * 2.2) * scale, 0, Math.PI * 2);
       ctx.fill();
     }
+    ctx.shadowBlur = 0;
+  }
+
+  function playerDrawPos(alpha) {
+    return { x: player.px + (player.x - player.px) * alpha, y: player.py + (player.y - player.py) * alpha };
+  }
+
+  function drawTrail(now) {
+    ctx.fillStyle = "#fff";
+    for (let i = 0; i < trail.length; i++) {
+      const p = trail[i];
+      const k = 1 - (now - p.t) / 220;
+      if (k <= 0) continue;
+      const s = worldToScreen(p.x, p.y);
+      ctx.globalAlpha = k * 0.35;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, PLAYER_R * scale * (0.25 + k * 0.7), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
   }
 
   function drawPlayer(alpha) {
-    const x = player.px + (player.x - player.px) * alpha;
-    const y = player.py + (player.y - player.py) * alpha;
-    const s = worldToScreen(x, y);
-    ctx.save();
+    const p = playerDrawPos(alpha);
+    const s = worldToScreen(p.x, p.y);
     ctx.shadowColor = "#fff";
-    ctx.shadowBlur = 16;
+    ctx.shadowBlur = 12;
     ctx.fillStyle = "#fff";
     ctx.beginPath();
     ctx.arc(s.x, s.y, PLAYER_R * scale, 0, Math.PI * 2);
     ctx.fill();
-    ctx.restore();
+    ctx.shadowBlur = 0;
+  }
+
+  function drawGraceRing(alpha, now) {
+    const left = GRACE_TICKS - currentPath.length;
+    if (left <= 0 || dead || !echoes.length) return;
+    const p = playerDrawPos(alpha);
+    const s = worldToScreen(p.x, p.y);
+    ctx.strokeStyle = "rgba(255,255,255," + (0.25 + 0.2 * (0.5 + 0.5 * Math.sin(now * 0.01))) + ")";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, Math.max((left / GRACE_TICKS) * 38 * scale, 1), 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  function drawParts(now, dt) {
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const p = parts[i];
+      const age = now - p.born;
+      if (age >= p.life) { parts.splice(i, 1); continue; }
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vx *= 0.96;
+      p.vy *= 0.96;
+      const k = 1 - age / p.life;
+      const s = worldToScreen(p.x, p.y);
+      ctx.globalAlpha = k;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, p.r * scale * (0.4 + k), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
   }
 
   function drawStick() {
@@ -410,30 +521,50 @@
 
   function drawHud() {
     const need = orbCountForRound(round);
-    ctx.fillStyle = "#fff";
-    ctx.font = "16px monospace";
-    ctx.textAlign = "left";
-    ctx.textBaseline = "top";
+    ctx.fillStyle = "#fff"; ctx.font = "16px monospace";
+    ctx.textAlign = "left"; ctx.textBaseline = "top";
     ctx.fillText("ECHO  R" + round + "  " + orbsThisRound + "/" + need, ox, Math.max(8, oy - 24));
     if (dead) {
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.font = "22px monospace";
-      const ty = oy + 48;
-      ctx.fillText("FIN  R" + roundsCompleted + "  " + orbsTotal, viewW / 2, ty);
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.font = "52px monospace";
+      ctx.fillText("FIN", viewW / 2, viewH / 2 - 18);
+      ctx.font = "18px monospace";
+      ctx.fillText("R" + roundsCompleted + "  " + orbsTotal, viewW / 2, viewH / 2 + 22);
       ctx.font = "14px monospace";
-      ctx.fillText("toca para reiniciar", viewW / 2, ty + 28);
+      ctx.fillText("toca para reiniciar", viewW / 2, viewH / 2 + 48);
     }
   }
 
-  function draw(alpha) {
-    if (dead) {
-      alpha = 1;
+  function draw(alpha, now) {
+    if (dead) alpha = 1;
+    const dt = fxPrev ? Math.min(0.05, (now - fxPrev) / 1000) : DT;
+    fxPrev = now;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, viewW, viewH);
+    ctx.save();
+    if (now < shakeUntil) {
+      const k = (shakeUntil - now) / 200;
+      ctx.translate((Math.random() - 0.5) * 14 * k, (Math.random() - 0.5) * 14 * k);
     }
-    drawArena();
-    drawEchoes(alpha);
-    drawOrbs();
-    drawPlayer(alpha);
+    ctx.strokeStyle = "#fff"; ctx.lineWidth = 2;
+    ctx.strokeRect(ox, oy, ARENA * scale, ARENA * scale);
+    drawEchoRoutes();
+    drawTrail(now);
+    drawEchoes(alpha, now);
+    drawOrbs(now);
+    if (!dead) {
+      const p = playerDrawPos(alpha);
+      trail.push({ x: p.x, y: p.y, t: now });
+      while (trail.length && now - trail[0].t > 220) trail.shift();
+      drawPlayer(alpha);
+      drawGraceRing(alpha, now);
+    }
+    drawParts(now, dt);
+    ctx.restore();
+    if (now < flashUntil) {
+      ctx.fillStyle = "rgba(255,255,255," + ((flashUntil - now) / 120 * 0.55) + ")";
+      ctx.fillRect(0, 0, viewW, viewH);
+    }
     drawStick();
     drawHud();
   }
@@ -528,7 +659,8 @@
       step(DT);
       accum -= DT;
     }
-    draw(accum / DT);
+    syncFx(now);
+    draw(accum / DT, now);
     requestAnimationFrame(frame);
   }
 
