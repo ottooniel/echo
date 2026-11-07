@@ -65,6 +65,9 @@
   let echoes = [];
   let dead = false;
   let deadTicks = 0;
+  let started = false;
+  let newBest = false;
+  let best = { r: 0, o: 0 };
 
   let lastTime = 0;
   let accum = 0;
@@ -205,11 +208,31 @@
     dead = false;
     deadTicks = 0;
     stickId = null;
+    started = true;
+    newBest = false;
     player.x = ARENA / 2;
     player.y = ARENA / 2;
     player.px = player.x;
     player.py = player.y;
     spawnOrbs();
+  }
+
+  function loadBest() {
+    try {
+      const b = JSON.parse(localStorage.getItem("echo_best"));
+      if (b && Number.isFinite(b.r) && Number.isFinite(b.o)) {
+        best = { r: b.r, o: b.o };
+      }
+    } catch (err) {}
+  }
+
+  function saveBest() {
+    newBest = roundsCompleted > best.r || (roundsCompleted === best.r && orbsTotal > best.o);
+    if (!newBest) return;
+    best = { r: roundsCompleted, o: orbsTotal };
+    try {
+      localStorage.setItem("echo_best", JSON.stringify(best));
+    } catch (err) {}
   }
 
   function outsideArena() {
@@ -278,6 +301,7 @@
   }
 
   function step(dt) {
+    if (!started) return;
     if (dead) {
       deadTicks += 1;
       return;
@@ -455,6 +479,7 @@
       shakeUntil = now + 200;
       noise(0.28);
       tone(140, 0.42, "sine", 0.2, 0, 40);
+      saveBest();
     }
     if (!dead && visDead) {
       parts.length = trail.length = 0;
@@ -628,19 +653,54 @@
     ctx.restore();
   }
 
+  function drawTitle(now) {
+    const cx = ARENA / 2, cy = ARENA / 2;
+    for (let i = 0; i < 3; i++) {
+      const a = now * 0.0007 + i * 2.1;
+      const s = worldToScreen(cx + Math.cos(a) * 72, cy + Math.sin(a) * 52);
+      ctx.globalAlpha = 0.55;
+      ctx.fillStyle = NEON[i];
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, ECHO_R * scale, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "#fff";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = "64px monospace";
+    ctx.fillText("ECHO", viewW / 2, viewH / 2 - 40);
+    ctx.font = "16px monospace";
+    ctx.fillText("MEJOR  R" + best.r + "  " + best.o, viewW / 2, viewH / 2 + 8);
+    ctx.font = "18px monospace";
+    ctx.fillText("toca para jugar", viewW / 2, viewH / 2 + 40);
+    ctx.font = "12px monospace";
+    ctx.fillText("recoge los orbes · esquiva tus ecos", viewW / 2, viewH / 2 + 64);
+    ctx.fillText("M: sonido", viewW / 2, viewH / 2 + 84);
+  }
+
   function drawHud() {
     const need = orbCountForRound(round);
     ctx.fillStyle = "#fff"; ctx.font = "16px monospace";
     ctx.textAlign = "left"; ctx.textBaseline = "top";
     ctx.fillText("ECHO  R" + round + "  " + orbsThisRound + "/" + need, ox, Math.max(8, oy - 24));
+    if (muted) {
+      ctx.textAlign = "right";
+      ctx.fillText("MUTE", ox + ARENA * scale, Math.max(8, oy - 24));
+    }
     if (dead) {
       ctx.textAlign = "center"; ctx.textBaseline = "middle";
       ctx.font = "52px monospace";
-      ctx.fillText("FIN", viewW / 2, viewH / 2 - 18);
+      ctx.fillText("FIN", viewW / 2, viewH / 2 - 36);
       ctx.font = "18px monospace";
-      ctx.fillText("R" + roundsCompleted + "  " + orbsTotal, viewW / 2, viewH / 2 + 22);
+      ctx.fillText("R" + roundsCompleted + "  " + orbsTotal, viewW / 2, viewH / 2 + 8);
+      if (newBest) {
+        ctx.font = "16px monospace";
+        ctx.fillText("NUEVO RÉCORD", viewW / 2, viewH / 2 + 32);
+      }
       ctx.font = "14px monospace";
-      ctx.fillText("toca para reiniciar", viewW / 2, viewH / 2 + 48);
+      ctx.fillText("MEJOR  R" + best.r + "  " + best.o, viewW / 2, viewH / 2 + (newBest ? 54 : 34));
+      ctx.fillText("toca para reiniciar", viewW / 2, viewH / 2 + (newBest ? 76 : 56));
     }
   }
 
@@ -657,6 +717,11 @@
     }
     ctx.strokeStyle = "#fff"; ctx.lineWidth = 2;
     ctx.strokeRect(ox, oy, ARENA * scale, ARENA * scale);
+    if (!started) {
+      ctx.restore();
+      drawTitle(now);
+      return;
+    }
     drawEchoRoutes();
     drawTrail(now);
     drawEchoes(alpha, now);
@@ -678,32 +743,8 @@
     drawHud();
   }
 
-  function onPointerDown(e) {
-    e.preventDefault();
-    unlock();
-    if (dead) {
-      if (deadTicks < RESTART_TICKS) {
-        return;
-      }
-      resetRun();
-      if (e.pointerType === "touch") {
-        stickId = e.pointerId;
-        stickOriginX = e.clientX;
-        stickOriginY = e.clientY;
-        stickNowX = e.clientX;
-        stickNowY = e.clientY;
-        return;
-      }
-      mouseSeen = true;
-      const w = screenToWorld(e.clientX, e.clientY);
-      mouseWorldX = w.x;
-      mouseWorldY = w.y;
-      return;
-    }
+  function applyPointerControl(e) {
     if (e.pointerType === "touch") {
-      if (stickId !== null) {
-        return;
-      }
       stickId = e.pointerId;
       stickOriginX = e.clientX;
       stickOriginY = e.clientY;
@@ -717,8 +758,27 @@
     mouseWorldY = w.y;
   }
 
+  function onPointerDown(e) {
+    e.preventDefault();
+    unlock();
+    if (!started) {
+      resetRun();
+      applyPointerControl(e);
+      return;
+    }
+    if (dead) {
+      if (deadTicks < RESTART_TICKS) return;
+      resetRun();
+      applyPointerControl(e);
+      return;
+    }
+    if (e.pointerType === "touch" && stickId !== null) return;
+    applyPointerControl(e);
+  }
+
   function onPointerMove(e) {
     e.preventDefault();
+    if (!started) return;
     if (e.pointerType === "touch") {
       if (e.pointerId !== stickId) {
         return;
@@ -740,6 +800,11 @@
     }
   }
 
+  function isStartKey(k) {
+    return k === "Enter" || k === " " || k === "ArrowUp" || k === "ArrowDown" ||
+      k === "ArrowLeft" || k === "ArrowRight" || "wasdWASD".indexOf(k) >= 0;
+  }
+
   function onKey(e, down) {
     if (down) unlock();
     if (down && (e.key === "m" || e.key === "M")) {
@@ -755,10 +820,16 @@
       }
       return;
     }
-    keys[e.key] = down;
     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].indexOf(e.key) !== -1) {
       e.preventDefault();
     }
+    if (down && !started) {
+      if (!isStartKey(e.key)) return;
+      keys[e.key] = true;
+      resetRun();
+      return;
+    }
+    keys[e.key] = down;
     if (down && dead && deadTicks >= RESTART_TICKS) {
       resetRun();
     }
@@ -802,7 +873,7 @@
   });
 
   resize();
-  spawnOrbs();
+  loadBest();
   requestAnimationFrame(frame);
 })();
 </script>
