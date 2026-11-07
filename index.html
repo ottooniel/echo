@@ -23,9 +23,14 @@
   const JOYSTICK_R = 48;
   const MARGIN = 28;
   const ECHO_R = 7;
-  const GRACE_TICKS = 90;
   const RESTART_TICKS = 30;
   const NEON = ["#22e6ff", "#ff3dc8", "#b8ff2e", "#ff8a1a"];
+  const MODES = [
+    { name: "FÁCIL", loop: false, grace: 90, orbBonus: 0 },
+    { name: "NORMAL", loop: true, grace: 90, orbBonus: 0 },
+    { name: "INFIERNO", loop: true, grace: 60, orbBonus: 2 }
+  ];
+  let mode = 1;
 
   const canvas = document.getElementById("c");
   const ctx = canvas.getContext("2d");
@@ -66,7 +71,7 @@
   let deadTicks = 0;
   let started = false;
   let newBest = false;
-  let best = { r: 0, o: 0 }, copiedUntil = 0, shareArmed = false;
+  let best = { r: 0, o: 0 }, copiedUntil = 0, shareArmed = false, modeArmed = false;
 
   let lastTime = 0;
   let accum = 0;
@@ -106,7 +111,16 @@
   }
 
   function orbCountForRound(n) {
-    return 3 + (n >> 1);
+    return 3 + (n >> 1) + MODES[mode].orbBonus;
+  }
+
+  function echoIndex(path, t) {
+    const L = path.length;
+    if (!MODES[mode].loop) return t < L ? t : -1;
+    if (L < 2) return 0;
+    const period = 2 * (L - 1);
+    const k = t % period;
+    return k < L ? k : period - k;
   }
 
   function spawnOrbs() {
@@ -117,7 +131,7 @@
       const cy = ARENA / 2;
       const radius = 96;
       for (let i = 0; i < need; i++) {
-        const a = -Math.PI / 2 + i * (Math.PI * 2 / 3);
+        const a = -Math.PI / 2 + i * (Math.PI * 2 / need);
         orbs.push({
           x: cx + Math.cos(a) * radius,
           y: cy + Math.sin(a) * radius
@@ -133,7 +147,7 @@
   function pickOrbOnEcho(salt) {
     const echo = echoes[salt % echoes.length];
     const path = echo.path;
-    const skip = Math.min(GRACE_TICKS, path.length >> 2);
+    const skip = Math.min(MODES[mode].grace, path.length >> 2);
     const span = Math.max(1, path.length - skip);
     for (let attempt = 0; attempt < 12; attempt++) {
       const i = skip + ((Math.random() * span) | 0);
@@ -215,12 +229,15 @@
     spawnOrbs();
   }
 
+  function bestKey() {
+    return mode ? "echo_best" + mode : "echo_best";
+  }
+
   function loadBest() {
+    best = { r: 0, o: 0 };
     try {
-      const b = JSON.parse(localStorage.getItem("echo_best"));
-      if (b && Number.isFinite(b.r) && Number.isFinite(b.o)) {
-        best = { r: b.r, o: b.o };
-      }
+      const b = JSON.parse(localStorage.getItem(bestKey()));
+      if (b && Number.isFinite(b.r) && Number.isFinite(b.o)) best = { r: b.r, o: b.o };
     } catch (err) {}
   }
 
@@ -228,9 +245,29 @@
     newBest = roundsCompleted > best.r || (roundsCompleted === best.r && orbsTotal > best.o);
     if (!newBest) return;
     best = { r: roundsCompleted, o: orbsTotal };
-    try {
-      localStorage.setItem("echo_best", JSON.stringify(best));
-    } catch (err) {}
+    try { localStorage.setItem(bestKey(), JSON.stringify(best)); } catch (err) {}
+  }
+
+  function startWith(m) {
+    mode = m;
+    try { localStorage.setItem("echo_mode", mode); } catch (err) {}
+    loadBest();
+    resetRun();
+  }
+
+  function clearFx() {
+    parts.length = trail.length = 0;
+    shakeUntil = flashUntil = graceFlashUntil = 0;
+    orbInRound = 0;
+    killDrones();
+  }
+
+  function goTitle() {
+    started = false;
+    dead = false;
+    deadTicks = 0;
+    visDead = false;
+    clearFx();
   }
 
   function outsideArena() {
@@ -239,15 +276,16 @@
   }
 
   function hitEcho() {
-    if (currentPath.length < GRACE_TICKS) {
+    if (currentPath.length < MODES[mode].grace) {
       return false;
     }
-    const i = currentPath.length - 1;
+    const t = currentPath.length - 1;
     const reach = PLAYER_R + ECHO_R;
     const reach2 = reach * reach;
     for (let e = 0; e < echoes.length; e++) {
       const path = echoes[e].path;
-      if (i >= path.length) {
+      const i = echoIndex(path, t);
+      if (i < 0) {
         continue;
       }
       const dx = path[i].x - player.x;
@@ -418,11 +456,12 @@
       drones.push({ o: o, f: f, g: g });
     }
     const t = ac.currentTime;
-    const i = currentPath.length - 1;
-    const hush = dead || currentPath.length < GRACE_TICKS;
+    const tick = currentPath.length - 1;
+    const hush = dead || currentPath.length < MODES[mode].grace;
     for (let e = 0; e < drones.length; e++) {
       let freq = 55, vol = 0;
-      if (!hush && e < echoes.length && i >= 0 && i < echoes[e].path.length) {
+      const i = e < echoes.length && tick >= 0 ? echoIndex(echoes[e].path, tick) : -1;
+      if (!hush && i >= 0) {
         const p = echoes[e].path[i];
         const idx = Math.min(9, Math.max(0, (p.x / ARENA * 10) | 0));
         freq = 55 * Math.pow(2, PENTA[idx] / 12);
@@ -435,11 +474,12 @@
   }
 
   function echoHitColor() {
-    const i = currentPath.length - 1;
+    const tick = currentPath.length - 1;
     const r2 = (PLAYER_R + ECHO_R) * (PLAYER_R + ECHO_R);
     for (let e = 0; e < echoes.length; e++) {
       const path = echoes[e].path;
-      if (i >= path.length) continue;
+      const i = echoIndex(path, tick);
+      if (i < 0) continue;
       const dx = path[i].x - player.x;
       const dy = path[i].y - player.y;
       if (dx * dx + dy * dy <= r2) return NEON[echoes[e].color];
@@ -479,13 +519,8 @@
       tone(140, 0.42, "sine", 0.2, 0, 40);
       saveBest();
     }
-    if (!dead && visDead) {
-      parts.length = trail.length = 0;
-      shakeUntil = flashUntil = graceFlashUntil = 0;
-      orbInRound = 0;
-      killDrones();
-    }
-    if (visPathLen < GRACE_TICKS && currentPath.length >= GRACE_TICKS && echoes.length) {
+    if (!dead && visDead) clearFx();
+    if (visPathLen < MODES[mode].grace && currentPath.length >= MODES[mode].grace && echoes.length) {
       graceFlashUntil = now + 180;
       tone(1800, 0.045, "square", 0.045);
     }
@@ -495,7 +530,7 @@
 
   function echoOpacity(index, now) {
     const a = 1 - (echoes.length - 1 - index) * 0.12;
-    const inGrace = currentPath.length < GRACE_TICKS;
+    const inGrace = currentPath.length < MODES[mode].grace;
     let o = Math.max(0.5, inGrace ? Math.min(a, 0.55) : a);
     if (inGrace) o = Math.max(0.5, o * (0.78 + 0.22 * (0.5 + 0.5 * Math.sin(now * 0.012))));
     if (now < graceFlashUntil) o = Math.min(1, o + 0.45);
@@ -503,31 +538,40 @@
   }
 
   function echoPos(path, alpha) {
-    const i = currentPath.length - 1;
-    if (i < 0 || i >= path.length) return null;
+    const t = currentPath.length - 1;
+    if (t < 0) return null;
+    const i = echoIndex(path, t);
+    if (i < 0) return null;
+    if (!t) return path[i];
+    const j = echoIndex(path, t - 1);
     const a = path[i];
-    if (!i) return a;
-    const b = path[i - 1];
+    const b = path[j < 0 ? i : j];
     return { x: b.x + (a.x - b.x) * alpha, y: b.y + (a.y - b.y) * alpha };
   }
 
+  function strokePath(path, from) {
+    let s = worldToScreen(path[from].x, path[from].y);
+    ctx.moveTo(s.x, s.y);
+    for (let i = from + 3; i < path.length; i += 3) {
+      s = worldToScreen(path[i].x, path[i].y);
+      ctx.lineTo(s.x, s.y);
+    }
+    s = worldToScreen(path[path.length - 1].x, path[path.length - 1].y);
+    ctx.lineTo(s.x, s.y);
+  }
+
   function drawEchoRoutes() {
-    const i0 = currentPath.length - 1;
-    if (i0 < 0) return;
-    ctx.lineWidth = 1.4; ctx.globalAlpha = 0.12;
+    ctx.lineWidth = 1.4;
     for (let e = 0; e < echoes.length; e++) {
       const path = echoes[e].path;
-      if (i0 >= path.length) continue;
+      if (!path.length) continue;
+      const loop = MODES[mode].loop;
+      const i0 = loop ? 0 : currentPath.length - 1;
+      if (!loop && (i0 < 0 || echoIndex(path, i0) < 0)) continue;
+      ctx.globalAlpha = loop ? 0.08 : 0.12;
       ctx.strokeStyle = NEON[echoes[e].color];
       ctx.beginPath();
-      let s = worldToScreen(path[i0].x, path[i0].y);
-      ctx.moveTo(s.x, s.y);
-      for (let i = i0 + 3; i < path.length; i += 3) {
-        s = worldToScreen(path[i].x, path[i].y);
-        ctx.lineTo(s.x, s.y);
-      }
-      s = worldToScreen(path[path.length - 1].x, path[path.length - 1].y);
-      ctx.lineTo(s.x, s.y);
+      strokePath(path, i0);
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
@@ -597,14 +641,15 @@
   }
 
   function drawGraceRing(alpha, now) {
-    const left = GRACE_TICKS - currentPath.length;
+    const g = MODES[mode].grace;
+    const left = g - currentPath.length;
     if (left <= 0 || dead || !echoes.length) return;
     const p = playerDrawPos(alpha);
     const s = worldToScreen(p.x, p.y);
     ctx.strokeStyle = "rgba(255,255,255," + (0.25 + 0.2 * (0.5 + 0.5 * Math.sin(now * 0.01))) + ")";
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(s.x, s.y, Math.max((left / GRACE_TICKS) * 38 * scale, 1), 0, Math.PI * 2);
+    ctx.arc(s.x, s.y, Math.max((left / g) * 38 * scale, 1), 0, Math.PI * 2);
     ctx.stroke();
   }
 
@@ -671,17 +716,30 @@
     ctx.font = "16px monospace";
     ctx.fillText("MEJOR  R" + best.r + "  " + best.o, viewW / 2, viewH / 2 + 8);
     ctx.font = "18px monospace";
-    ctx.fillText("toca para jugar", viewW / 2, viewH / 2 + 40);
+    ctx.fillText("toca para jugar", viewW / 2, viewH / 2 + 32);
+    ctx.font = "16px monospace";
+    for (let i = 0; i < 3; i++) {
+      const lab = (i + 1) + " " + MODES[i].name;
+      ctx.fillText(mode === i ? "[ " + lab + " ]" : lab, viewW / 2, viewH / 2 + 62 + i * 26);
+    }
     ctx.font = "12px monospace";
-    ctx.fillText("recoge los orbes · esquiva tus ecos", viewW / 2, viewH / 2 + 64);
-    ctx.fillText("M: sonido", viewW / 2, viewH / 2 + 84);
+    ctx.fillText("recoge los orbes · esquiva tus ecos", viewW / 2, viewH / 2 + 144);
+    ctx.fillText("M: sonido", viewW / 2, viewH / 2 + 162);
+  }
+
+  function hitModeLine(x, y) {
+    if (Math.abs(x - viewW / 2) > 110) return -1;
+    for (let i = 0; i < 3; i++) {
+      if (Math.abs(y - (viewH / 2 + 62 + i * 26)) < 20) return i;
+    }
+    return -1;
   }
 
   function drawHud() {
     const need = orbCountForRound(round);
     ctx.fillStyle = "#fff"; ctx.font = "16px monospace";
     ctx.textAlign = "left"; ctx.textBaseline = "top";
-    ctx.fillText("ECHO  R" + round + "  " + orbsThisRound + "/" + need, ox, Math.max(8, oy - 24));
+    ctx.fillText("ECHO · " + MODES[mode].name + "  R" + round + "  " + orbsThisRound + "/" + need, ox, Math.max(8, oy - 24));
     if (muted) {
       ctx.textAlign = "right";
       ctx.fillText("MUTE", ox + ARENA * scale, Math.max(8, oy - 24));
@@ -703,17 +761,18 @@
       ctx.textAlign = "right";
       ctx.textBaseline = "bottom";
       ctx.fillText(performance.now() < copiedUntil ? "copiado" : "compartir", ox + ARENA * scale - 12, oy + ARENA * scale - 18);
+      ctx.textAlign = "left";
+      ctx.fillText("cambiar modo", ox + 12, oy + ARENA * scale - 18);
     }
   }
 
-  function hitShare(x, y) {
-    const cx = ox + ARENA * scale - 12 - 36;
-    const cy = oy + ARENA * scale - 18;
-    return Math.abs(x - cx) < 60 && Math.abs(y - cy) < 22;
+  function hitCorner(x, y, left) {
+    return Math.abs(x - (left ? ox + 48 : ox + ARENA * scale - 48)) < 60 &&
+      Math.abs(y - (oy + ARENA * scale - 18)) < 22;
   }
 
   function shareScore() {
-    const t = "ECHO · R" + roundsCompleted + " · " + orbsTotal + " orbes. ¿Me superas? " + location.href;
+    const t = "ECHO · " + MODES[mode].name + " · R" + roundsCompleted + " · " + orbsTotal + " orbes. ¿Me superas? " + location.href;
     try {
       if (window.matchMedia("(pointer: coarse)").matches && navigator.share) {
         navigator.share({ text: t }).catch(function () {});
@@ -781,12 +840,14 @@
     e.preventDefault();
     unlock();
     if (!started) {
-      resetRun();
+      const mi = hitModeLine(e.clientX, e.clientY);
+      startWith(mi >= 0 ? mi : mode);
       applyPointerControl(e);
       return;
     }
     if (dead) {
-      if (hitShare(e.clientX, e.clientY)) { shareArmed = true; return; }
+      if (hitCorner(e.clientX, e.clientY, 0)) { shareArmed = true; return; }
+      if (hitCorner(e.clientX, e.clientY, 1)) { modeArmed = true; return; }
       if (deadTicks < RESTART_TICKS) return;
       resetRun();
       applyPointerControl(e);
@@ -816,8 +877,12 @@
   function onPointerUp(e) {
     unlock();
     if (shareArmed) {
-      if (e.type !== "pointercancel" && dead && hitShare(e.clientX, e.clientY)) shareScore();
+      if (e.type !== "pointercancel" && dead && hitCorner(e.clientX, e.clientY, 0)) shareScore();
       shareArmed = false;
+    }
+    if (modeArmed) {
+      if (e.type !== "pointercancel" && hitCorner(e.clientX, e.clientY, 1)) goTitle();
+      modeArmed = false;
     }
     if (e.pointerId === stickId) {
       stickId = null;
@@ -831,6 +896,7 @@
 
   function onKey(e, down) {
     if (down) unlock();
+    if (down && !e.repeat && e.key === "Escape" && started) { goTitle(); return; }
     if (down && !e.repeat && dead && (e.key === "c" || e.key === "C")) { shareScore(); return; }
     if (down && (e.key === "m" || e.key === "M")) {
       if (!e.repeat && master) {
@@ -849,9 +915,13 @@
       e.preventDefault();
     }
     if (down && !started) {
+      if (e.key === "1" || e.key === "2" || e.key === "3") {
+        startWith(e.key - 1);
+        return;
+      }
       if (!isStartKey(e.key)) return;
       keys[e.key] = true;
-      resetRun();
+      startWith(mode);
       return;
     }
     keys[e.key] = down;
@@ -898,6 +968,10 @@
   });
 
   resize();
+  try {
+    const n = +localStorage.getItem("echo_mode");
+    if (n === 0 || n === 1 || n === 2) mode = n;
+  } catch (err) {}
   loadBest();
   requestAnimationFrame(frame);
 })();
