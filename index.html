@@ -702,19 +702,26 @@
       ctx.fillText("MEJOR  R" + best.r + "  " + best.o, viewW / 2, viewH / 2 + (newBest ? 54 : 34));
       ctx.fillText("toca para reiniciar", viewW / 2, viewH / 2 + (newBest ? 76 : 56));
       ctx.font = "12px monospace";
-      ctx.fillText(performance.now() < copiedUntil ? "copiado" : "compartir", viewW / 2, viewH / 2 + (newBest ? 96 : 76));
+      ctx.textAlign = "right";
+      ctx.textBaseline = "bottom";
+      ctx.fillText(performance.now() < copiedUntil ? "copiado" : "compartir", ox + ARENA * scale - 12, oy + ARENA * scale - 18);
     }
   }
 
   function hitShare(x, y) {
-    return Math.abs(x - viewW / 2) < 90 && Math.abs(y - (viewH / 2 + (newBest ? 96 : 76))) < 24;
+    const cx = ox + ARENA * scale - 12 - 36;
+    const cy = oy + ARENA * scale - 18;
+    return Math.abs(x - cx) < 60 && Math.abs(y - cy) < 22;
   }
 
   function shareScore() {
     const t = "ECHO · R" + roundsCompleted + " · " + orbsTotal + " orbes. ¿Me superas? " + location.href;
     try {
-      navigator.share ? navigator.share({ text: t }).catch(function () {}) :
-        navigator.clipboard.writeText(t).then(function () { copiedUntil = performance.now() + 1500; }).catch(function () {});
+      if (window.matchMedia("(pointer: coarse)").matches && navigator.share) {
+        navigator.share({ text: t }).catch(function () {});
+        return;
+      }
+      navigator.clipboard.writeText(t).then(function () { copiedUntil = performance.now() + 1500; }).catch(function () {});
     } catch (err) {}
   }
 
