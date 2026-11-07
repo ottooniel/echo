@@ -724,7 +724,7 @@
     }
     ctx.font = "12px monospace";
     ctx.fillText("recoge los orbes · esquiva tus ecos", viewW / 2, viewH / 2 + 144);
-    ctx.fillText("M: sonido", viewW / 2, viewH / 2 + 162);
+    if (!matchMedia("(pointer: coarse)").matches) ctx.fillText("M: sonido", viewW / 2, viewH / 2 + 162);
   }
 
   function hitModeLine(x, y) {
@@ -969,8 +969,8 @@
 
   resize();
   try {
-    const n = +localStorage.getItem("echo_mode");
-    if (n === 0 || n === 1 || n === 2) mode = n;
+    const n = localStorage.getItem("echo_mode");
+    if (n === "0" || n === "1" || n === "2") mode = +n;
   } catch (err) {}
   loadBest();
   requestAnimationFrame(frame);
