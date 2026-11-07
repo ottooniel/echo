@@ -34,6 +34,10 @@
   const ARENA_PAD = 18;
   const JOYSTICK_R = 72;
   const MARGIN = 28;
+  const ECHO_R = 7;
+  const GRACE_TICKS = 90;
+  const RESTART_TICKS = 30;
+  const NEON = ["#22e6ff", "#ff3dc8", "#b8ff2e", "#ff8a1a"];
 
   const canvas = document.getElementById("c");
   const ctx = canvas.getContext("2d");
@@ -68,6 +72,10 @@
   let orbsThisRound = 0;
   let orbsTotal = 0;
   let roundsCompleted = 0;
+  let currentPath = [];
+  let echoes = [];
+  let dead = false;
+  let deadTicks = 0;
 
   let lastTime = 0;
   let accum = 0;
@@ -106,7 +114,7 @@
   function spawnOrbs() {
     orbs = [];
     const need = orbCountForRound(round);
-    if (round === 1) {
+    if (round === 1 || echoes.length === 0) {
       const cx = ARENA / 2;
       const cy = ARENA / 2;
       const radius = 96;
@@ -119,14 +127,42 @@
       }
       return;
     }
-    const inner = MARGIN;
-    const span = ARENA - inner * 2;
     for (let i = 0; i < need; i++) {
-      orbs.push({
-        x: inner + Math.random() * span,
-        y: inner + Math.random() * span
-      });
+      orbs.push(pickOrbOnEcho(i));
     }
+  }
+
+  function pickOrbOnEcho(salt) {
+    const echo = echoes[salt % echoes.length];
+    const path = echo.path;
+    const skip = Math.min(GRACE_TICKS, path.length >> 2);
+    const span = Math.max(1, path.length - skip);
+    for (let attempt = 0; attempt < 12; attempt++) {
+      const i = skip + ((Math.random() * span) | 0);
+      const p = path[Math.min(i, path.length - 1)];
+      const cx = ARENA / 2;
+      const cy = ARENA / 2;
+      const dxc = p.x - cx;
+      const dyc = p.y - cy;
+      if (p.x < MARGIN || p.y < MARGIN || p.x > ARENA - MARGIN || p.y > ARENA - MARGIN ||
+          dxc * dxc + dyc * dyc < 40 * 40) {
+        continue;
+      }
+      let far = true;
+      for (let j = 0; j < orbs.length; j++) {
+        const dx = orbs[j].x - p.x;
+        const dy = orbs[j].y - p.y;
+        if (dx * dx + dy * dy < 40 * 40) {
+          far = false;
+          break;
+        }
+      }
+      if (far) {
+        return { x: p.x, y: p.y };
+      }
+    }
+    const fallback = path[path.length - 1];
+    return { x: fallback.x, y: fallback.y };
   }
 
   function collectOrbs() {
@@ -142,11 +178,67 @@
       }
     }
     if (orbs.length === 0) {
-      roundsCompleted += 1;
-      round += 1;
-      orbsThisRound = 0;
-      spawnOrbs();
+      finishRound();
     }
+  }
+
+  function finishRound() {
+    echoes.push({
+      path: currentPath,
+      color: echoes.length % NEON.length
+    });
+    roundsCompleted += 1;
+    round += 1;
+    orbsThisRound = 0;
+    player.x = ARENA / 2;
+    player.y = ARENA / 2;
+    player.px = player.x;
+    player.py = player.y;
+    currentPath = [{ x: player.x, y: player.y }];
+    spawnOrbs();
+  }
+
+  function resetRun() {
+    round = 1;
+    orbsThisRound = 0;
+    orbsTotal = 0;
+    roundsCompleted = 0;
+    currentPath = [{ x: ARENA / 2, y: ARENA / 2 }];
+    echoes = [];
+    dead = false;
+    deadTicks = 0;
+    stickId = null;
+    player.x = ARENA / 2;
+    player.y = ARENA / 2;
+    player.px = player.x;
+    player.py = player.y;
+    spawnOrbs();
+  }
+
+  function outsideArena() {
+    return player.x < PLAYER_R || player.y < PLAYER_R ||
+      player.x > ARENA - PLAYER_R || player.y > ARENA - PLAYER_R;
+  }
+
+  function hitEcho() {
+    if (currentPath.length < GRACE_TICKS) {
+      return false;
+    }
+    const i = currentPath.length - 1;
+    const reach = PLAYER_R + ECHO_R;
+    const reach2 = reach * reach;
+    for (let e = 0; e < echoes.length; e++) {
+      const path = echoes[e].path;
+      if (i >= path.length) {
+        continue;
+      }
+      const dx = path[i].x - player.x;
+      const dy = path[i].y - player.y;
+      if (dx * dx + dy * dy <= reach2) {
+        return true;
+      }
+    }
+    return false;
   }
 
   function keyboardDir() {
@@ -189,6 +281,11 @@
   }
 
   function step(dt) {
+    if (dead) {
+      deadTicks += 1;
+      return;
+    }
+
     player.px = player.x;
     player.py = player.y;
 
@@ -205,6 +302,14 @@
       moveToward(tx, ty, dt);
     }
 
+    currentPath.push({ x: player.x, y: player.y });
+
+    if (outsideArena() || hitEcho()) {
+      dead = true;
+      deadTicks = 0;
+      return;
+    }
+
     collectOrbs();
   }
 
@@ -214,6 +319,46 @@
     ctx.strokeStyle = "#fff";
     ctx.lineWidth = 2;
     ctx.strokeRect(ox, oy, ARENA * scale, ARENA * scale);
+  }
+
+  function echoOpacity(index) {
+    const age = echoes.length - 1 - index;
+    const a = 1 - age * 0.12;
+    const floor = 0.5;
+    const inGrace = currentPath.length < GRACE_TICKS;
+    return Math.max(floor, inGrace ? Math.min(a, 0.55) : a);
+  }
+
+  function echoPos(path, alpha) {
+    const i = currentPath.length - 1;
+    if (i < 0 || i >= path.length) {
+      return null;
+    }
+    const a = path[i];
+    if (i === 0) {
+      return a;
+    }
+    const b = path[i - 1];
+    return {
+      x: b.x + (a.x - b.x) * alpha,
+      y: b.y + (a.y - b.y) * alpha
+    };
+  }
+
+  function drawEchoes(alpha) {
+    for (let e = 0; e < echoes.length; e++) {
+      const pos = echoPos(echoes[e].path, alpha);
+      if (!pos) {
+        continue;
+      }
+      const s = worldToScreen(pos.x, pos.y);
+      ctx.globalAlpha = echoOpacity(e);
+      ctx.fillStyle = NEON[echoes[e].color];
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, ECHO_R * scale, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
   }
 
   function drawOrbs() {
@@ -270,10 +415,23 @@
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
     ctx.fillText("ECHO  R" + round + "  " + orbsThisRound + "/" + need, ox, Math.max(8, oy - 24));
+    if (dead) {
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = "22px monospace";
+      const ty = oy + 48;
+      ctx.fillText("FIN  R" + roundsCompleted + "  " + orbsTotal, viewW / 2, ty);
+      ctx.font = "14px monospace";
+      ctx.fillText("toca para reiniciar", viewW / 2, ty + 28);
+    }
   }
 
   function draw(alpha) {
+    if (dead) {
+      alpha = 1;
+    }
     drawArena();
+    drawEchoes(alpha);
     drawOrbs();
     drawPlayer(alpha);
     drawStick();
@@ -282,6 +440,25 @@
 
   function onPointerDown(e) {
     e.preventDefault();
+    if (dead) {
+      if (deadTicks < RESTART_TICKS) {
+        return;
+      }
+      resetRun();
+      if (e.pointerType === "touch") {
+        stickId = e.pointerId;
+        stickOriginX = e.clientX;
+        stickOriginY = e.clientY;
+        stickNowX = e.clientX;
+        stickNowY = e.clientY;
+        return;
+      }
+      mouseSeen = true;
+      const w = screenToWorld(e.clientX, e.clientY);
+      mouseWorldX = w.x;
+      mouseWorldY = w.y;
+      return;
+    }
     if (e.pointerType === "touch") {
       if (stickId !== null) {
         return;
@@ -322,9 +499,18 @@
   }
 
   function onKey(e, down) {
+    if (down && e.repeat) {
+      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].indexOf(e.key) !== -1) {
+        e.preventDefault();
+      }
+      return;
+    }
     keys[e.key] = down;
     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].indexOf(e.key) !== -1) {
       e.preventDefault();
+    }
+    if (down && dead && deadTicks >= RESTART_TICKS) {
+      resetRun();
     }
   }
 
@@ -353,6 +539,11 @@
   window.addEventListener("pointercancel", onPointerUp);
   window.addEventListener("keydown", function (e) { onKey(e, true); });
   window.addEventListener("keyup", function (e) { onKey(e, false); });
+  window.addEventListener("blur", function () {
+    for (const k in keys) {
+      keys[k] = false;
+    }
+  });
 
   resize();
   spawnOrbs();
