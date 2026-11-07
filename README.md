@@ -4,7 +4,7 @@ Un arcade de supervivencia donde **tu peor enemigo eres tú mismo**: cada ronda 
 
 Hecho para el reto **build&play** de [Open2 / Build & Pitch](https://www.open2.io/build-and-pitch/play): un juego arcade difícil en **32 KB**, sin librerías y sin assets.
 
-**Jugar:** https://ottooniel.github.io/build-and-play/
+**Jugar:** https://ottooniel.github.io/echo/
 
 ## Cómo se juega
 
