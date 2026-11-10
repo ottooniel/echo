@@ -78,7 +78,7 @@
 
   const trail = [];
   const parts = [];
-  let visOrbs = 0, visRound = 1, visDead = false, visPathLen = 0, killer = -1;
+  let visOrbs = 0, visRound = 1, visDead = false, visPathLen = 0, killer = -1, visNear = -1;
   let shakeUntil = 0, flashUntil = 0, graceFlashUntil = 0, bannerUntil = 0, fxPrev = 0;
   let ac, master, noiseBuf, muted = false, orbInRound = 0;
   const drones = [];
@@ -520,6 +520,12 @@
       graceFlashUntil = now + 180;
       tone(1800, 0.045, "square", 0.045);
     }
+    const near = started && !dead && currentPath.length >= MODES[mode].grace ? echoNear(PLAYER_R + ECHO_R + 12) : -1;
+    if (near >= 0 && visNear < 0) {
+      burst(player.x, player.y, 6, NEON[echoes[near].color], 70, now);
+      tone(900, 0.07, "triangle", 0.07, 0, 1800);
+    }
+    visNear = near;
     updateDrones();
     visOrbs = orbsTotal; visRound = round; visDead = dead; visPathLen = currentPath.length;
   }
