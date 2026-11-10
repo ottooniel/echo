@@ -33,7 +33,7 @@
     { name: "NORMAL", loop: true, grace: 90, orbBonus: 0 },
     { name: "INFIERNO", loop: true, grace: 60, orbBonus: 2 }
   ];
-  let mode = 1;
+  let mode = 1, grace = 90;
 
   const canvas = document.getElementById("c");
   const ctx = canvas.getContext("2d");
@@ -153,9 +153,13 @@
     const path = echo.path;
     const skip = Math.min(MODES[mode].grace, path.length >> 2);
     const span = Math.max(1, path.length - skip);
-    for (let attempt = 0; attempt < 12; attempt++) {
+    let p;
+    for (let attempt = 0; attempt < 40; attempt++) {
       const i = skip + ((Math.random() * span) | 0);
-      const p = path[Math.min(i, path.length - 1)];
+      p = attempt < 12 ? path[Math.min(i, path.length - 1)] : {
+        x: MARGIN + Math.random() * (ARENA - 2 * MARGIN),
+        y: MARGIN + Math.random() * (ARENA - 2 * MARGIN)
+      };
       const cx = ARENA / 2;
       const cy = ARENA / 2;
       const dxc = p.x - cx;
@@ -177,8 +181,7 @@
         return { x: p.x, y: p.y };
       }
     }
-    const fallback = path[path.length - 1];
-    return { x: fallback.x, y: fallback.y };
+    return p;
   }
 
   function collectOrbs() {
@@ -203,6 +206,7 @@
       path: currentPath,
       color: echoes.length % NEON.length
     });
+    grace = Math.min(MODES[mode].grace, currentPath.length);
     roundsCompleted += 1;
     round += 1;
     orbsThisRound = 0;
@@ -220,6 +224,7 @@
     orbsTotal = 0;
     roundsCompleted = 0;
     currentPath = [{ x: ARENA / 2, y: ARENA / 2 }];
+    grace = MODES[mode].grace;
     echoes = [];
     dead = false;
     deadTicks = 0;
@@ -280,7 +285,7 @@
   }
 
   function hitEcho() {
-    if (currentPath.length < MODES[mode].grace) {
+    if (currentPath.length < grace) {
       return false;
     }
     const t = currentPath.length - 1;
@@ -459,7 +464,7 @@
     }
     const t = ac.currentTime;
     const tick = currentPath.length - 1;
-    const hush = dead || currentPath.length < MODES[mode].grace;
+    const hush = dead || currentPath.length < grace;
     for (let e = 0; e < drones.length; e++) {
       let freq = 55, vol = 0;
       const i = e < echoes.length && tick >= 0 ? echoIndex(echoes[e].path, tick) : -1;
@@ -520,11 +525,11 @@
       saveBest();
     }
     if (!dead && visDead) clearFx();
-    if (visPathLen < MODES[mode].grace && currentPath.length >= MODES[mode].grace && echoes.length) {
+    if (visPathLen < grace && currentPath.length >= grace && echoes.length) {
       graceFlashUntil = now + 180;
       tone(1800, 0.045, "square", 0.045);
     }
-    const near = started && !dead && currentPath.length >= MODES[mode].grace ? echoNear(PLAYER_R + ECHO_R + 12) : -1;
+    const near = started && !dead && currentPath.length >= grace ? echoNear(PLAYER_R + ECHO_R + 12) : -1;
     if (near >= 0 && visNear < 0) {
       burst(player.x, player.y, 6, NEON[echoes[near].color], 70, now);
       tone(900, 0.07, "triangle", 0.07, 0, 1800);
@@ -536,7 +541,7 @@
 
   function echoOpacity(index, now) {
     const a = 1 - (echoes.length - 1 - index) * 0.12;
-    const inGrace = currentPath.length < MODES[mode].grace;
+    const inGrace = currentPath.length < grace;
     let o = Math.max(0.5, inGrace ? Math.min(a, 0.55) : a);
     if (inGrace) o = Math.max(0.5, o * (0.78 + 0.22 * (0.5 + 0.5 * Math.sin(now * 0.012))));
     if (now < graceFlashUntil) o = Math.min(1, o + 0.45);
@@ -648,7 +653,7 @@
   }
 
   function drawGraceRing(alpha, now) {
-    const g = MODES[mode].grace;
+    const g = grace;
     const left = g - currentPath.length;
     if (left <= 0 || dead || !echoes.length) return;
     const p = playerDrawPos(alpha);
