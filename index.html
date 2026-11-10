@@ -78,7 +78,7 @@
 
   const trail = [];
   const parts = [];
-  let visOrbs = 0, visRound = 1, visDead = false, visPathLen = 0;
+  let visOrbs = 0, visRound = 1, visDead = false, visPathLen = 0, killer = -1;
   let shakeUntil = 0, flashUntil = 0, graceFlashUntil = 0, bannerUntil = 0, fxPrev = 0;
   let ac, master, noiseBuf, muted = false, orbInRound = 0;
   const drones = [];
@@ -471,18 +471,14 @@
     }
   }
 
-  function echoHitColor() {
+  function echoNear(r) {
     const tick = currentPath.length - 1;
-    const r2 = (PLAYER_R + ECHO_R) * (PLAYER_R + ECHO_R);
     for (let e = 0; e < echoes.length; e++) {
       const path = echoes[e].path;
       const i = echoIndex(path, tick);
-      if (i < 0) continue;
-      const dx = path[i].x - player.x;
-      const dy = path[i].y - player.y;
-      if (dx * dx + dy * dy <= r2) return NEON[echoes[e].color];
+      if (i >= 0 && Math.hypot(path[i].x - player.x, path[i].y - player.y) <= r) return e;
     }
-    return "#fff";
+    return -1;
   }
 
   function syncFx(now) {
@@ -512,7 +508,8 @@
     }
     if (dead && !visDead) {
       burst(player.x, player.y, 16, "#fff", 140, now);
-      burst(player.x, player.y, 10, echoHitColor(), 120, now);
+      killer = echoNear(PLAYER_R + ECHO_R);
+      burst(player.x, player.y, 10, killer < 0 ? "#fff" : NEON[echoes[killer].color], 120, now);
       shakeUntil = now + 200;
       noise(0.28);
       tone(140, 0.42, "sine", 0.2, 0, 40);
@@ -756,7 +753,7 @@
       ctx.textAlign = "right";
       ctx.fillText("MUTE", ox + ARENA * scale, Math.max(8, oy - 24));
     }
-    if (dead) {
+    if (dead && deadTicks >= RESTART_TICKS) {
       ctx.textAlign = "center"; ctx.textBaseline = "middle";
       ctx.font = "52px monospace";
       ctx.fillText("FIN", viewW / 2, viewH / 2 - 36);
@@ -822,6 +819,16 @@
       while (trail.length && now - trail[0].t > 220) trail.shift();
       drawPlayer(alpha);
       drawGraceRing(alpha, now);
+    } else {
+      const k = echoes[killer];
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#fff";
+      dot(player.x, player.y, PLAYER_R, 1);
+      if (k) {
+        const p = echoPos(k.path, 1);
+        ctx.strokeStyle = NEON[k.color];
+        dot(p.x, p.y, ECHO_R + 6 + 3 * Math.sin(now * 0.012), 1);
+      }
     }
     drawParts(now, dt);
     ctx.restore();
@@ -859,9 +866,9 @@
       return;
     }
     if (dead) {
+      if (deadTicks < RESTART_TICKS) return;
       if (hitCorner(e.clientX, e.clientY, 0)) { shareArmed = true; return; }
       if (hitCorner(e.clientX, e.clientY, 1)) { modeArmed = true; return; }
-      if (deadTicks < RESTART_TICKS) return;
       resetRun();
       applyPointerControl(e);
       return;
