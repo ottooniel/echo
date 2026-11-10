@@ -576,19 +576,31 @@
     ctx.globalAlpha = 1;
   }
 
+  function dot(x, y, r, stroke) {
+    const s = worldToScreen(x, y);
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, r * scale, 0, Math.PI * 2);
+    stroke ? ctx.stroke() : ctx.fill();
+  }
+
   function drawEchoes(alpha, now) {
-    ctx.shadowBlur = echoes.length > 6 ? 4 : 12;
+    const t = currentPath.length - 1;
     for (let e = 0; e < echoes.length; e++) {
-      const pos = echoPos(echoes[e].path, alpha);
+      const path = echoes[e].path;
+      const pos = echoPos(path, alpha);
       if (!pos) continue;
-      const s = worldToScreen(pos.x, pos.y);
-      const col = NEON[echoes[e].color];
-      ctx.globalAlpha = echoOpacity(e, now);
-      ctx.shadowColor = col;
-      ctx.fillStyle = col;
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, ECHO_R * scale, 0, Math.PI * 2);
-      ctx.fill();
+      const op = echoOpacity(e, now);
+      ctx.shadowColor = ctx.fillStyle = NEON[echoes[e].color];
+      ctx.shadowBlur = 0;
+      for (let k = 5; k; k--) {
+        const i = t < k * 3 ? -1 : echoIndex(path, t - k * 3);
+        if (i < 0) continue;
+        ctx.globalAlpha = op * (0.36 - k * 0.06);
+        dot(path[i].x, path[i].y, ECHO_R * (1 - k * 0.12));
+      }
+      ctx.globalAlpha = op;
+      ctx.shadowBlur = echoes.length > 6 ? 4 : 12;
+      dot(pos.x, pos.y, ECHO_R);
     }
     ctx.shadowBlur = 0;
     ctx.globalAlpha = 1;
@@ -599,12 +611,7 @@
     ctx.fillStyle = "#ffd24a";
     ctx.shadowColor = "#ffd24a";
     ctx.shadowBlur = 6 + pulse * 6;
-    for (let i = 0; i < orbs.length; i++) {
-      const s = worldToScreen(orbs[i].x, orbs[i].y);
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, (ORB_R + pulse * 2.2) * scale, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    for (let i = 0; i < orbs.length; i++) dot(orbs[i].x, orbs[i].y, ORB_R + pulse * 2.2);
     ctx.shadowBlur = 0;
   }
 
@@ -618,24 +625,18 @@
       const p = trail[i];
       const k = 1 - (now - p.t) / 220;
       if (k <= 0) continue;
-      const s = worldToScreen(p.x, p.y);
       ctx.globalAlpha = k * 0.35;
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, PLAYER_R * scale * (0.25 + k * 0.7), 0, Math.PI * 2);
-      ctx.fill();
+      dot(p.x, p.y, PLAYER_R * (0.25 + k * 0.7));
     }
     ctx.globalAlpha = 1;
   }
 
   function drawPlayer(alpha) {
     const p = playerDrawPos(alpha);
-    const s = worldToScreen(p.x, p.y);
     ctx.shadowColor = "#fff";
     ctx.shadowBlur = 12;
     ctx.fillStyle = "#fff";
-    ctx.beginPath();
-    ctx.arc(s.x, s.y, PLAYER_R * scale, 0, Math.PI * 2);
-    ctx.fill();
+    dot(p.x, p.y, PLAYER_R);
     ctx.shadowBlur = 0;
   }
 
@@ -644,12 +645,9 @@
     const left = g - currentPath.length;
     if (left <= 0 || dead || !echoes.length) return;
     const p = playerDrawPos(alpha);
-    const s = worldToScreen(p.x, p.y);
     ctx.strokeStyle = "rgba(255,255,255," + (0.25 + 0.2 * (0.5 + 0.5 * Math.sin(now * 0.01))) + ")";
     ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(s.x, s.y, Math.max((left / g) * 38 * scale, 1), 0, Math.PI * 2);
-    ctx.stroke();
+    dot(p.x, p.y, left / g * 38, 1);
   }
 
   function drawParts(now, dt) {
@@ -662,12 +660,9 @@
       p.vx *= 0.96;
       p.vy *= 0.96;
       const k = 1 - age / p.life;
-      const s = worldToScreen(p.x, p.y);
       ctx.globalAlpha = k;
       ctx.fillStyle = p.color;
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, p.r * scale * (0.4 + k), 0, Math.PI * 2);
-      ctx.fill();
+      dot(p.x, p.y, p.r * (0.4 + k));
     }
     ctx.globalAlpha = 1;
   }
@@ -720,12 +715,9 @@
     const cx = ARENA / 2, cy = ARENA / 2;
     for (let i = 0; i < 3; i++) {
       const a = now * 0.0007 + i * 2.1;
-      const s = worldToScreen(cx + Math.cos(a) * 135, cy + Math.sin(a) * 120);
       ctx.globalAlpha = 0.55;
       ctx.fillStyle = NEON[i];
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, ECHO_R * scale, 0, Math.PI * 2);
-      ctx.fill();
+      dot(cx + Math.cos(a) * 135, cy + Math.sin(a) * 120, ECHO_R);
     }
     ctx.globalAlpha = 1;
     ctx.fillStyle = "#fff";
