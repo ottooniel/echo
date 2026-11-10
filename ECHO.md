@@ -5,7 +5,7 @@
 - **Modos:** FÁCIL (tecla `1`), NORMAL (tecla `2`, por defecto) e INFIERNO (tecla `3`), elegibles en el título. `Esc` vuelve al título.
 - **Repo:** https://github.com/ottooniel/echo (público)
 - **Juego jugable (GitHub Pages):** https://ottooniel.github.io/echo/
-- **Hecho con:** Cursor. Pesa menos de 32 KB (30.288 bytes al congelarlo), sin librerías y sin assets externos.
+- **Hecho con:** Cursor. Pesa menos de 32 KB (30.380 bytes al congelarlo), sin librerías y sin assets externos.
 - **Reto:** Open2 — Build & Pitch. **Cierre de envíos: 13 nov 2026.**
 - **Objetivo final:** publicar en LinkedIn el juego + un tráiler hecho con Claude + Higgsfield (MCP).
 

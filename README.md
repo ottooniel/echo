@@ -49,7 +49,7 @@ Si juegas con teclado, el ratón no interfiere: solo recupera el control con un 
 
 | Regla | Cómo se cumple |
 |---|---|
-| 32 KB en total | Un único `index.html` de 30.288 bytes (menos de 32 KB), sin comprimir ni minificar |
+| 32 KB en total | Un único `index.html` de 30.380 bytes (menos de 32 KB), sin comprimir ni minificar |
 | Sin librerías ni motores | JavaScript puro, sin dependencias |
 | Cero assets | Todo se dibuja con Canvas 2D y todo suena con Web Audio; la tipografía es `monospace` del sistema |
 | Repo nuevo y público | Creado durante el reto (6 nov 2026) |

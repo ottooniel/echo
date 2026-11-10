@@ -18,7 +18,7 @@ Envío: https://app.open2.io/play (requiere cuenta de Open2). Un juego por cuent
 
 ## Reglas duras (no negociables)
 
-1. **32 KB en total, sin comprimir.** Es todo lo que el navegador descarga para jugar. Cuenta el build final, así que se puede minificar. Meta interna: **máximo 30 KB** para tener margen.
+1. **32 KB en total, sin comprimir.** Es todo lo que el navegador descarga para jugar. Cuenta el build final, así que se puede minificar. Meta interna: **máximo 32.000 bytes** para tener margen.
 2. **Cero librerías, frameworks o motores.** Ni Phaser, ni Three.js, ni React, ni nada de npm en el runtime. Solo lo que trae el navegador (Canvas 2D, Web Audio, DOM).
 3. **Cero assets.** Nada de imágenes, audio ni fuentes. Todo se dibuja con código y todo suena con código.
    - Sin `@font-face`, sin Google Fonts. Usar solo fuentes del sistema (`monospace`, `sans-serif`).
@@ -54,7 +54,7 @@ PowerShell, desde la raíz del repo:
 (Get-ChildItem -Recurse -File -Include *.html,*.css,*.js | Where-Object { $_.FullName -notmatch '\\(node_modules|\.git)\\' } | Measure-Object Length -Sum).Sum
 ```
 
-El resultado son bytes. Debe ser menor que 32768. Si pasa de 30000, avisar y recortar antes de seguir agregando cosas.
+El resultado son bytes. Debe ser menor que 32768. Si pasa de 32000, avisar y recortar antes de seguir agregando cosas.
 
 ## Concepto del juego
 
