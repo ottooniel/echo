@@ -440,7 +440,7 @@
   }
 
   function updateDrones() {
-    if (!ac) return;
+    if (!ac || !started) return;
     while (drones.length < echoes.length) {
       const o = ac.createOscillator();
       const f = ac.createBiquadFilter();
