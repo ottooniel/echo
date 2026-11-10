@@ -45,7 +45,7 @@
   const keys = Object.create(null);
   let mouseWorldX = ARENA / 2;
   let mouseWorldY = ARENA / 2;
-  let mouseSeen = false;
+  let mouseSeen = false, anchorX = NaN, anchorY = 0;
 
   let stickId = null;
   let stickOriginX = 0;
@@ -868,6 +868,10 @@
       stickNowY = e.clientY;
       return;
     }
+    if (!mouseSeen) {
+      if (anchorX !== anchorX) { anchorX = e.clientX; anchorY = e.clientY; }
+      if (Math.hypot(e.clientX - anchorX, e.clientY - anchorY) < 40) return;
+    }
     mouseSeen = true;
     const w = screenToWorld(e.clientX, e.clientY);
     mouseWorldX = w.x;
@@ -914,6 +918,7 @@
     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].indexOf(e.key) !== -1) {
       e.preventDefault();
     }
+    if (down && isStartKey(e.key)) { mouseSeen = false; anchorX = NaN; }
     if (down && !started) {
       if (e.key === "1" || e.key === "2" || e.key === "3") {
         startWith(e.key - 1);
