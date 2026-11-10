@@ -79,7 +79,7 @@
   const trail = [];
   const parts = [];
   let visOrbs = 0, visRound = 1, visDead = false, visPathLen = 0;
-  let shakeUntil = 0, flashUntil = 0, graceFlashUntil = 0, fxPrev = 0;
+  let shakeUntil = 0, flashUntil = 0, graceFlashUntil = 0, bannerUntil = 0, fxPrev = 0;
   let ac, master, noiseBuf, muted = false, orbInRound = 0;
   const drones = [];
   const PENTA = [0, 3, 5, 7, 10, 12, 15, 17, 19, 22];
@@ -257,7 +257,7 @@
 
   function clearFx() {
     parts.length = trail.length = 0;
-    shakeUntil = flashUntil = graceFlashUntil = 0;
+    shakeUntil = flashUntil = graceFlashUntil = bannerUntil = 0;
     orbInRound = 0;
     killDrones();
   }
@@ -505,6 +505,7 @@
       orbInRound = 0;
       if (round > visRound) {
         flashUntil = now + 120;
+        bannerUntil = now + 1200;
         const arp = [523, 659, 784, 1047];
         for (let n = 0; n < 4; n++) tone(arp[n], 0.09, "triangle", 0.1, n * 0.07);
       }
@@ -671,6 +672,27 @@
     ctx.globalAlpha = 1;
   }
 
+  function drawLabels(alpha, now) {
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    if (now < bannerUntil) {
+      ctx.globalAlpha = Math.min(1, (bannerUntil - now) / 300);
+      ctx.fillStyle = "#fff";
+      ctx.font = "28px monospace";
+      ctx.fillText("RONDA " + round, viewW / 2, oy + 90 * scale);
+    }
+    const left = 240 - currentPath.length;
+    const p = echoes.length === 1 && !dead && left > 0 && echoPos(echoes[0].path, alpha);
+    if (p) {
+      const s = worldToScreen(p.x, p.y - 17);
+      ctx.globalAlpha = Math.min(1, left / 30);
+      ctx.fillStyle = NEON[0];
+      ctx.font = "14px monospace";
+      ctx.fillText("TU ECO", s.x, s.y);
+    }
+    ctx.globalAlpha = 1;
+  }
+
   function drawStick() {
     if (stickId === null) {
       return;
@@ -815,6 +837,7 @@
       ctx.fillStyle = "rgba(255,255,255," + ((flashUntil - now) / 120 * 0.55) + ")";
       ctx.fillRect(0, 0, viewW, viewH);
     }
+    drawLabels(alpha, now);
     drawStick();
     drawHud();
   }
