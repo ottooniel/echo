@@ -38,7 +38,7 @@
   let viewW = 0;
   let viewH = 0;
   let dpr = 1;
-  let scale = 1;
+  let scale = 1, fs = 1;
   let ox = 0;
   let oy = 0;
 
@@ -92,6 +92,7 @@
     canvas.height = Math.floor(viewH * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     scale = Math.min((viewW - 36) / ARENA, (viewH - 68) / ARENA);
+    fs = Math.max(1, scale);
     ox = (viewW - ARENA * scale) / 2;
     oy = (viewH - ARENA * scale) / 2;
   }
@@ -676,8 +677,7 @@
     if (now < bannerUntil) {
       ctx.globalAlpha = Math.min(1, (bannerUntil - now) / 300);
       ctx.fillStyle = "#fff";
-      ctx.font = "28px monospace";
-      ctx.fillText("RONDA " + round, viewW / 2, oy + 90 * scale);
+      label("RONDA " + round, 28, -110);
     }
     const left = 240 - currentPath.length;
     const p = echoes.length === 1 && !dead && left > 0 && echoPos(echoes[0].path, alpha);
@@ -685,7 +685,7 @@
       const s = worldToScreen(p.x, p.y - 17);
       ctx.globalAlpha = Math.min(1, left / 30);
       ctx.fillStyle = NEON[0];
-      ctx.font = "14px monospace";
+      ctx.font = 14 * fs + "px monospace";
       ctx.fillText("TU ECO", s.x, s.y);
     }
     ctx.globalAlpha = 1;
@@ -714,6 +714,15 @@
     ctx.restore();
   }
 
+  function label(str, px, dy) {
+    ctx.font = px * fs + "px monospace";
+    ctx.fillText(str, viewW / 2, viewH / 2 + dy * fs);
+  }
+
+  function score(r, o) {
+    return r + " RONDAS · " + o + " ORBES";
+  }
+
   function drawTitle(now) {
     const cx = ARENA / 2, cy = ARENA / 2;
     for (let i = 0; i < 3; i++) {
@@ -726,32 +735,33 @@
     ctx.fillStyle = "#fff";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.font = "64px monospace";
-    ctx.fillText("ECHO", viewW / 2, viewH / 2 - 40);
-    ctx.font = "16px monospace";
-    ctx.fillText("MEJOR  R" + best.r + "  " + best.o, viewW / 2, viewH / 2 + 8);
-    ctx.font = "18px monospace";
-    ctx.fillText("toca para jugar", viewW / 2, viewH / 2 + 32);
-    ctx.font = "16px monospace";
+    label("ECHO", 64, -40);
+    if (best.r + best.o) label("MEJOR  " + score(best.r, best.o), 16, 8);
+    label("toca para jugar", 18, 32);
     for (let i = 0; i < 3; i++) {
       const lab = (i + 1) + " " + MODES[i].name;
-      ctx.fillText(mode === i ? "[ " + lab + " ]" : lab, viewW / 2, viewH / 2 + 62 + i * 26);
+      label(mode === i ? "[ " + lab + " ]" : lab, 16, 62 + i * 26);
     }
-    ctx.font = "12px monospace";
-    ctx.fillText("recoge los orbes · esquiva tus ecos", viewW / 2, viewH / 2 + 144);
-    if (!matchMedia("(pointer: coarse)").matches) ctx.fillText("M: sonido", viewW / 2, viewH / 2 + 162);
+    label("recoge los orbes · esquiva tus ecos", 12, 144);
+    if (!matchMedia("(pointer: coarse)").matches) label("M: sonido", 12, 162);
   }
 
   function hitModeLine(x, y) {
-    if (Math.abs(x - viewW / 2) > 110) return -1;
+    if (Math.abs(x - viewW / 2) > 110 * fs) return -1;
     for (let i = 0; i < 3; i++) {
-      if (Math.abs(y - (viewH / 2 + 62 + i * 26)) < 20) return i;
+      if (Math.abs(y - viewH / 2 - (62 + i * 26) * fs) < 14 * fs) return i;
     }
     return -1;
   }
 
   function drawHud() {
     const need = orbCountForRound(round);
+    const fin = dead && deadTicks >= RESTART_TICKS;
+    const bottom = oy + ARENA * scale - 18 * fs;
+    if (fin) {
+      ctx.fillStyle = "rgba(0,0,0,.6)";
+      ctx.fillRect(0, 0, viewW, viewH);
+    }
     ctx.fillStyle = "#fff"; ctx.font = "16px monospace";
     ctx.textAlign = "left"; ctx.textBaseline = "top";
     ctx.fillText("ECHO · " + MODES[mode].name + "  R" + round + "  " + orbsThisRound + "/" + need, ox, Math.max(8, oy - 24));
@@ -759,35 +769,29 @@
       ctx.textAlign = "right";
       ctx.fillText("MUTE", ox + ARENA * scale, Math.max(8, oy - 24));
     }
-    if (dead && deadTicks >= RESTART_TICKS) {
+    if (fin) {
       ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      ctx.font = "52px monospace";
-      ctx.fillText("FIN", viewW / 2, viewH / 2 - 36);
-      ctx.font = "18px monospace";
-      ctx.fillText("R" + roundsCompleted + "  " + orbsTotal, viewW / 2, viewH / 2 + 8);
-      if (newBest) {
-        ctx.font = "16px monospace";
-        ctx.fillText("NUEVO RÉCORD", viewW / 2, viewH / 2 + 32);
-      }
-      ctx.font = "14px monospace";
-      ctx.fillText("MEJOR  R" + best.r + "  " + best.o, viewW / 2, viewH / 2 + (newBest ? 54 : 34));
-      ctx.fillText("toca para reiniciar", viewW / 2, viewH / 2 + (newBest ? 76 : 56));
-      ctx.font = "12px monospace";
+      label("FIN", 52, -36);
+      label(score(roundsCompleted, orbsTotal), 18, 8);
+      if (newBest) label("NUEVO RÉCORD", 16, 34);
+      else if (best.r + best.o) label("MEJOR  " + score(best.r, best.o), 14, 34);
+      label("toca para reiniciar", 14, 60);
+      ctx.font = 12 * fs + "px monospace";
       ctx.textAlign = "right";
       ctx.textBaseline = "bottom";
-      ctx.fillText(performance.now() < copiedUntil ? "copiado" : "compartir", ox + ARENA * scale - 12, oy + ARENA * scale - 18);
+      ctx.fillText(performance.now() < copiedUntil ? "copiado" : "compartir", ox + ARENA * scale - 12 * fs, bottom);
       ctx.textAlign = "left";
-      ctx.fillText("cambiar modo", ox + 12, oy + ARENA * scale - 18);
+      ctx.fillText("cambiar modo", ox + 12 * fs, bottom);
     }
   }
 
   function hitCorner(x, y, left) {
-    return Math.abs(x - (left ? ox + 48 : ox + ARENA * scale - 48)) < 60 &&
-      Math.abs(y - (oy + ARENA * scale - 18)) < 22;
+    return Math.abs(x - (left ? ox + 48 * fs : ox + ARENA * scale - 48 * fs)) < 60 * fs &&
+      Math.abs(y - (oy + ARENA * scale - 18 * fs)) < 22 * fs;
   }
 
   function shareScore() {
-    const t = "ECHO · " + MODES[mode].name + " · R" + roundsCompleted + " · " + orbsTotal + " orbes. ¿Me superas? " + location.href;
+    const t = "ECHO · " + MODES[mode].name + " · " + score(roundsCompleted, orbsTotal) + ". ¿Me superas? " + location.href;
     try {
       if (window.matchMedia("(pointer: coarse)").matches && navigator.share) {
         navigator.share({ text: t }).catch(function () {});
