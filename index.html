@@ -298,10 +298,8 @@
   }
 
   function keyboardDir() {
-    const x = (keys.ArrowRight || keys.d || keys.D ? 1 : 0) -
-      (keys.ArrowLeft || keys.a || keys.A ? 1 : 0);
-    const y = (keys.ArrowDown || keys.s || keys.S ? 1 : 0) -
-      (keys.ArrowUp || keys.w || keys.W ? 1 : 0);
+    const x = (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0);
+    const y = (keys.ArrowDown || keys.KeyS ? 1 : 0) - (keys.ArrowUp || keys.KeyW ? 1 : 0);
     return { x, y };
   }
 
@@ -894,8 +892,7 @@
   }
 
   function isStartKey(k) {
-    return k === "Enter" || k === " " || k === "ArrowUp" || k === "ArrowDown" ||
-      k === "ArrowLeft" || k === "ArrowRight" || "wasdWASD".indexOf(k) >= 0;
+    return /^(Enter|Space|Arrow|Key[WASD]$)/.test(k);
   }
 
   function onKey(e, down) {
@@ -918,19 +915,19 @@
     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].indexOf(e.key) !== -1) {
       e.preventDefault();
     }
-    if (down && isStartKey(e.key)) { mouseSeen = false; anchorX = NaN; }
+    if (down && isStartKey(e.code)) { mouseSeen = false; anchorX = NaN; }
     if (down && !started) {
       if (e.key === "1" || e.key === "2" || e.key === "3") {
         startWith(e.key - 1);
         return;
       }
-      if (!isStartKey(e.key)) return;
-      keys[e.key] = true;
+      if (!isStartKey(e.code)) return;
+      keys[e.code] = true;
       startWith(mode);
       return;
     }
-    keys[e.key] = down;
-    if (down && dead && deadTicks >= RESTART_TICKS) {
+    keys[e.code] = down;
+    if (down && dead && deadTicks >= RESTART_TICKS && isStartKey(e.code)) {
       resetRun();
     }
   }
